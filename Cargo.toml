@@ -1,0 +1,25 @@
+[package]
+name = "grib2_reader"
+version = "0.1.0"
+edition = "2021"
+description = "A simple library capable of reading GRIB version 2 files"
+license = "MIT OR Apache-2.0"
+keywords = ["GRIB"]
+homepage = "https://github.com/christian-boks/grib2_reader"
+repository = "https://github.com/christian-boks/grib2_reader"
+exclude = ["data/*", ".vscode/*"]
+
+[features]
+# Defines a feature named `json` that can be used to instrument the GribIndex to generate serialize functionality.
+json = ["dep:serde"]
+
+[dependencies]
+serde = { version = "1.0.197", features = ["derive"], optional = true }
+thiserror = "1.0.24"
+bitstream-io = "2.2.0"
+tokio = { version = "1.33.0", features = [
+    "macros",
+    "fs",
+    "test-util",
+    "io-util",
+] }
