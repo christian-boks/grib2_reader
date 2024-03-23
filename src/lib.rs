@@ -266,10 +266,8 @@ impl Grib2Reader {
 
         self.reader.seek(SeekFrom::Start(self.offset)).await?;
 
-        println!("before read exact");
         let mut buffer = [0; 16];
         let _ = self.reader.read_exact(&mut buffer).await?;
-        println!("read exact");
 
         // Look for the letters GRIB that indicate this is indeed the kind of file we can read
         let header: [u8; 4] = [0x47, 0x52, 0x49, 0x42];
