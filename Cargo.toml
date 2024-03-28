@@ -23,3 +23,11 @@ tokio = { version = "1.33.0", features = [
     "test-util",
     "io-util",
 ] }
+
+[dev-dependencies]
+gif = "0.11.1"
+itertools = "0.12.1"
+proj4rs = "0.1.2"
+hdf5_processor = { git = "ssh://git@github.com/christian-boks/hdf5_processor.git", branch = "master", features = [
+    "json",
+] }

@@ -80,19 +80,19 @@ pub struct LambertConformalTemplate {
     pub scaled_value_of_minor_axis_of_oblate_spheroid_earth: u32,
     pub nx_number_of_points_along_the_x_axis: u32,
     pub ny_number_of_points_along_the_y_axis: u32,
-    pub la1_latitude_of_first_grid_point: u32,
-    pub lo1_longitude_of_first_grid_point: u32,
+    pub la1_latitude_of_first_grid_point: i32,
+    pub lo1_longitude_of_first_grid_point: i32,
     pub resolution_and_component_flags: u8,
-    pub lad_latitude_where_dx_and_dy_are_specified: u32,
-    pub lov_longitude_of_meridian_parallel_to_y_axis_along_which_latitude_increases_as_the_y_coordinate_increases: u32,
+    pub lad_latitude_where_dx_and_dy_are_specified: i32,
+    pub lov_longitude_of_meridian_parallel_to_y_axis_along_which_latitude_increases_as_the_y_coordinate_increases: i32,
     pub dx_x_direction_grid_length: u32,
     pub dy_y_direction_grid_length: u32,
     pub projection_centre_flag: u8,
     pub scanning_mode: u8,
-    pub latin_1_first_latitude_from_the_pole_at_which_the_secant_cone_cuts_the_sphere: u32,
-    pub latin_2_second_latitude_from_the_pole_at_which_the_secant_cone_cuts_the_sphere: u32,
-    pub latitude_of_the_southern_pole_of_projection: u32,
-    pub longitude_of_the_southern_pole_of_projection: u32,
+    pub latin_1_first_latitude_from_the_pole_at_which_the_secant_cone_cuts_the_sphere: i32,
+    pub latin_2_second_latitude_from_the_pole_at_which_the_secant_cone_cuts_the_sphere: i32,
+    pub latitude_of_the_southern_pole_of_projection: i32,
+    pub longitude_of_the_southern_pole_of_projection: i32,
 }
 
 #[derive(Debug, Clone)]
@@ -344,7 +344,7 @@ impl Grib2Reader {
                 4 => result_grib.product_definition.push(self.parse_product_definition(&data)),
                 5 => result_grib.data_representation.push(self.parse_data_representation(&data)),
                 6 => result_grib.bitmap.push(self.parse_bitmap(&data)),
-                7 => result_grib.data.push(self.parse_data(&data, &result_grib.data_representation)?),
+                7 => result_grib.data.push(self.parse_data(&data, &result_grib.data_representation, &result_grib.bitmap)?),
                 _ => {}
             }
 
@@ -410,19 +410,19 @@ impl Grib2Reader {
             scaled_value_of_minor_axis_of_oblate_spheroid_earth: read_u32_be(&buffer[26..]),
             nx_number_of_points_along_the_x_axis: read_u32_be(&buffer[30..]),
             ny_number_of_points_along_the_y_axis: read_u32_be(&buffer[34..]),
-            la1_latitude_of_first_grid_point: read_u32_be(&buffer[38..]),
-            lo1_longitude_of_first_grid_point: read_u32_be(&buffer[42..]),
+            la1_latitude_of_first_grid_point: read_i32_be(&buffer[38..]),
+            lo1_longitude_of_first_grid_point: read_i32_be(&buffer[42..]),
             resolution_and_component_flags: buffer[46],
-            lad_latitude_where_dx_and_dy_are_specified: read_u32_be(&buffer[47..]),
-            lov_longitude_of_meridian_parallel_to_y_axis_along_which_latitude_increases_as_the_y_coordinate_increases: read_u32_be(&buffer[51..]),
+            lad_latitude_where_dx_and_dy_are_specified: read_i32_be(&buffer[47..]),
+            lov_longitude_of_meridian_parallel_to_y_axis_along_which_latitude_increases_as_the_y_coordinate_increases: read_i32_be(&buffer[51..]),
             dx_x_direction_grid_length: read_u32_be(&buffer[55..]),
             dy_y_direction_grid_length: read_u32_be(&buffer[59..]),
             projection_centre_flag: buffer[63],
             scanning_mode: buffer[64],
-            latin_1_first_latitude_from_the_pole_at_which_the_secant_cone_cuts_the_sphere: read_u32_be(&buffer[65..]),
-            latin_2_second_latitude_from_the_pole_at_which_the_secant_cone_cuts_the_sphere: read_u32_be(&buffer[69..]),
-            latitude_of_the_southern_pole_of_projection: read_u32_be(&buffer[73..]),
-            longitude_of_the_southern_pole_of_projection: read_u32_be(&buffer[77..]),
+            latin_1_first_latitude_from_the_pole_at_which_the_secant_cone_cuts_the_sphere: read_i32_be(&buffer[65..]),
+            latin_2_second_latitude_from_the_pole_at_which_the_secant_cone_cuts_the_sphere: read_i32_be(&buffer[69..]),
+            latitude_of_the_southern_pole_of_projection: read_i32_be(&buffer[73..]),
+            longitude_of_the_southern_pole_of_projection: read_i32_be(&buffer[77..]),
         })
     }
 
@@ -532,21 +532,42 @@ impl Grib2Reader {
         }
     }
 
-    fn parse_data(&self, buffer: &[u8], data_representation_list: &Vec<DataRepresentation>) -> Result<Data, Grib2Error> {
+    fn parse_data(&self, buffer: &[u8], data_representation_list: &Vec<DataRepresentation>, bitmap: &Vec<Bitmap>) -> Result<Data, Grib2Error> {
         let mut r = BitReader::endian(Cursor::new(&buffer[5..]), BigEndian);
 
-        let mut result = vec![];
+        let mut bitmap_reader = None;
+        let uses_bitmap = bitmap[0].bitmap_indicator == 0;
+        if uses_bitmap {
+            bitmap_reader = Some(BitReader::endian(Cursor::new(&bitmap[0].bmp), BigEndian));
+        }
 
         // We assume that the latest data representation is the use we need to use
         let cur_data_rep = &data_representation_list[data_representation_list.len() - 1];
         if let DataRepresentationTemplate::SimplePacking(sp) = &cur_data_rep.template {
             let number_of_data_points = cur_data_rep.number_of_data_points;
 
+            let mut result: Vec<f32> = Vec::with_capacity(number_of_data_points as usize);
+
             let mut iterations = 0;
             let base: f32 = 2.0;
             let factor = base.powf(sp.binary_scale_factor as f32);
 
             while iterations < number_of_data_points {
+                if uses_bitmap {
+                    let present = match bitmap_reader.as_mut().unwrap().read_bit() {
+                        Ok(val) => val,
+                        Err(err) => {
+                            return Err(Grib2Error::DataDecodeFailed(err.to_string()));
+                        }
+                    };
+
+                    if !present {
+                        result.push(0.0);
+                        iterations += 1;
+                        continue;
+                    }
+                }
+
                 match r.read::<u32>(sp.number_of_bits_used_for_each_packed_value as u32) {
                     Ok(x) => {
                         let y = sp.reference_value + (x as f32) * factor;
@@ -558,9 +579,11 @@ impl Grib2Reader {
                 };
                 iterations += 1;
             }
+
+            return Ok(Data { data: result });
         }
 
-        Ok(Data { data: result })
+        Err(Grib2Error::DataDecodeFailed("No SimplePacking info".into()))
     }
 
     async fn get_length(&mut self) -> Result<usize, Grib2Error> {
@@ -586,6 +609,14 @@ fn read_i16_be(array: &[u8]) -> i16 {
     val
 }
 
+fn read_i32_be(array: &[u8]) -> i32 {
+    let mut val = (array[3] as i32) + ((array[2] as i32) << 8) + ((array[1] as i32) << 16) + (((array[0] & 127) as i32) << 24);
+    if array[0] & 0x80 > 0 {
+        val = -val;
+    }
+    val
+}
+
 fn read_u16_be(array: &[u8]) -> u16 {
     (array[1] as u16) + ((array[0] as u16) << 8)
 }
@@ -605,9 +636,43 @@ fn read_u64_be(array: &[u8]) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use tokio::io::AsyncWriteExt;
-
     use super::*;
+    use gif::{Encoder, Frame, Repeat};
+    use proj4rs;
+    use proj4rs::proj::Proj;
+    use std::borrow::Cow;
+    use std::f64::consts::PI;
+    use tokio::io::AsyncWriteExt;
+    pub const DEG_TO_RAD: f64 = PI / 180.0;
+    pub const RAD_TO_DEG: f64 = 180.0 / PI;
+
+    fn save_gif(result_data: &Vec<u8>, width: usize, height: usize, filename: &str) {
+        let mut color_map = Vec::<u8>::with_capacity(256 * 3);
+
+        // Add the palette
+        for index in 0..255 {
+            color_map.push(index);
+            color_map.push(index);
+            color_map.push(index);
+        }
+
+        color_map.push(255);
+        color_map.push(255);
+        color_map.push(255);
+
+        let mut image = std::fs::File::create(filename).unwrap();
+        let mut encoder = Encoder::new(&mut image, width as u16, height as u16, &color_map).unwrap();
+        encoder.set_repeat(Repeat::Finite(0)).unwrap();
+
+        let frame = Frame {
+            width: width as u16,
+            height: height as u16,
+            buffer: Cow::Borrowed(&*result_data),
+            ..Default::default()
+        };
+
+        encoder.write_frame(&frame).unwrap();
+    }
 
     #[tokio::test]
     async fn read_test() -> Result<(), Grib2Error> {
@@ -617,21 +682,217 @@ mod tests {
         let mut reader = Grib2Reader::new(BufReader::new(f));
         let result = reader.read(vec![SearchParams { param: 33, level: 700 }, SearchParams { param: 34, level: 700 }]).await?;
 
-        //assert_eq!(2, result.len());
+        println!("Results:");
+        for mut grib in result {
+            grib.data[0].data = vec![];
+            grib.bitmap[0].bmp = vec![];
+            println!("{:#?}", &grib);
+        }
 
-        // assert_eq!(result[0].pds.indicator_of_parameter_and_units, 33);
-        // assert_eq!(result[0].pds.level_or_layer_value, 700);
+        Ok(())
+    }
 
-        // assert_eq!(result[1].pds.indicator_of_parameter_and_units, 34);
-        // assert_eq!(result[1].pds.level_or_layer_value, 700);
+    async fn get_data() -> Result<Vec<f32>, Grib2Error> {
+        let f = File::open("data/HARMONIE_DINI_SF_5.grib").await?;
 
-        // println!("Results:");
-        // for grib in result {
-        //     println!("{:#?}", &grib.pds);
-        //     if let Some(gds) = grib.gds {
-        //         println!("{:#?}", &gds);
-        //     }
-        // }
+        let mut reader = Grib2Reader::new(BufReader::new(f));
+        let result = reader.read(vec![SearchParams { param: 33, level: 700 }, SearchParams { param: 34, level: 700 }]).await?;
+
+        let mut data: Vec<f32> = vec![];
+
+        for grib in result {
+            data = grib.data[0].data.clone();
+        }
+
+        Ok(data)
+    }
+
+    #[tokio::test]
+    async fn read_single_test() -> Result<(), Grib2Error> {
+        // cargo test --release read_single_test -- --nocapture > out_single.log
+        let f = File::open("data/HARMONIE_DINI_SF_5.grib").await?;
+
+        let mut reader = Grib2Reader::new(BufReader::new(f));
+        let result = reader.read(vec![SearchParams { param: 33, level: 700 }, SearchParams { param: 34, level: 700 }]).await?;
+
+        println!("Results:");
+        for mut grib in result {
+            let data = grib.data[0].data.clone();
+            grib.data[0].data = vec![];
+
+            println!("{:#?}", &grib);
+            //println!("Data {:?}", &data);
+
+            let maximum = *data.iter().max_by(|a, b| a.total_cmp(b)).unwrap();
+            let minimum = *data.iter().min_by(|a, b| a.total_cmp(b)).unwrap();
+            println!("Max value {:?}, min value: {:?}", maximum, minimum);
+            let dx = 255. / (maximum - minimum);
+            println!("Data dx: {:?}", dx);
+
+            let img: Vec<u8> = data.iter().map(|v| f32::floor((v - minimum) * dx) as u8).collect();
+
+            //nx_number_of_points_along_the_x_axis: 1906,
+            //ny_number_of_points_along_the_y_axis: 1606,
+
+            save_gif(&img, 1906, 1606, "./out/img.gif");
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn mapview_test() -> Result<(), Grib2Error> {
+        // cargo test --release mapview_test -- --nocapture > out.log
+
+        // 800x600
+        // UL 58.9238, 2.532 =>    281860.9506885687, 8163935.337341594
+        // LR 52.3271, 18.1562 => 2021138.9387408334, 6859486.798858716
+
+        // Max value 295.04468, min value: 245.35814
+        let grib_data = get_data().await?;
+
+        let from = Proj::from_proj_string("+proj=merc +a=6378137 +b=6378137 +lat_ts=0 +lon_0=0 +x_0=0 +y_0=0 +k=1 +units=m +nadgrids=@null +wktext +no_defs +type=crs").unwrap();
+        let to = Proj::from_proj_string(concat!("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")).unwrap();
+        //let to = Proj::from_proj_string("+proj=lcc +lat_0=55.5 +lon_0=-8 +lat_1=55.5 +lat_2=55.5 +x_0=0 +y_0=0 +R=6371229 +units=m +no_defs +type=crs").unwrap();
+
+        let x_step = (2021138.9387408334 - 281860.9506885687) / 800.;
+        let y_step = (8163935.337341594 - 6859486.798858716) / 600.;
+
+        let x_start = 281860.9506885687; // x_min => +
+        let y_start = 8163935.337341594; // y_max => -
+
+        let lcc = hdf5_processor::LCC::new(55.5 * DEG_TO_RAD, -8. * DEG_TO_RAD, 55.5 * DEG_TO_RAD, 55.5 * DEG_TO_RAD);
+        let (x_min, y_min) = lcc.forward(39.671000 * DEG_TO_RAD, (334.578000 - 360.) * DEG_TO_RAD);
+
+        let dx = 2000.;
+        let dy = 2000.;
+
+        let nx = 1906 as usize;
+        //let ny = 1606 as usize;
+
+        let mut imm_data: Vec<f32> = vec![0.0; 800 * 600];
+
+        let mut idx = 0;
+        let mut y_cur = y_start;
+        for _y in 0..600 {
+            let mut x_cur = x_start;
+            for _x in 0..800 {
+                let mut point_3d = (x_cur, y_cur, 0.0);
+                proj4rs::transform::transform(&from, &to, &mut point_3d).unwrap();
+
+                let (x, y) = lcc.forward(point_3d.1, point_3d.0);
+
+                let x_index = f32::round(((x - x_min) / dx as f64) as f32) as usize;
+                let y_index = f32::round(((y - y_min) / dy as f64) as f32) as usize;
+                let val = grib_data[y_index * nx + x_index];
+
+                imm_data[idx] = val;
+                idx += 1;
+
+                //println!("wgs: {}, {} - lcc: {}, {}", px, py, x, y);
+
+                x_cur += x_step;
+            }
+            y_cur -= y_step;
+        }
+
+        let max = 295.04468;
+        let min = 245.35814;
+
+        let dx = 255. / (max - min);
+        println!("Data dx: {:?}", dx);
+
+        let img: Vec<u8> = imm_data.iter().map(|v| f32::floor((v - min) * dx) as u8).collect();
+
+        //nx_number_of_points_along_the_x_axis: 1906,
+        //ny_number_of_points_along_the_y_axis: 1606,
+
+        save_gif(&img, 800, 600, "./out/cut_img.gif");
+
+        // point_3d.0 = point_3d.0.to_degrees();
+        // point_3d.1 = point_3d.1.to_degrees();
+        // println!("{} {}", point_3d.0, point_3d.1);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn mapview_leae_test() -> Result<(), Grib2Error> {
+        // cargo test --release mapview_leae_test -- --nocapture
+
+        // 800x600
+        // UL 58.9238, 2.532 =>    281860.9506885687, 8163935.337341594
+        // LR 52.3271, 18.1562 => 2021138.9387408334, 6859486.798858716
+
+        // x_max 352947.12941396347
+        // x_min -222470.81951688128
+        // y_max -3537939.7858127435
+        // y_min -3937043.0019400464
+
+        // {width: 1882, height: 1306}
+
+        let width = 1882;
+        let height = 1306;
+
+        // Max value 295.04468, min value: 245.35814
+        let grib_data = get_data().await?;
+
+        let from = Proj::from_proj_string("+proj=merc +a=6378137 +b=6378137 +lat_ts=0 +lon_0=0 +x_0=0 +y_0=0 +k=1 +units=m +nadgrids=@null +wktext +no_defs +type=crs").unwrap();
+        let to = Proj::from_proj_string(concat!("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")).unwrap();
+        //let to = Proj::from_proj_string("+proj=lcc +lat_0=55.5 +lon_0=-8 +lat_1=55.5 +lat_2=55.5 +x_0=0 +y_0=0 +R=6371229 +units=m +no_defs +type=crs").unwrap();
+
+        let x_step = (352947.12941396347 + 222470.81951688128) / width as f64;
+        let y_step = (-3537939.7858127435 + 3937043.0019400464) / height as f64;
+
+        let x_start = -222470.81951688128; // x_min => +
+        let y_start = -3537939.7858127435; // y_max => -
+
+        let laea = hdf5_processor::LAEA::new(90.0 * DEG_TO_RAD, 10.0 * DEG_TO_RAD);
+        let lcc = hdf5_processor::LCC::new(55.5 * DEG_TO_RAD, -8. * DEG_TO_RAD, 55.5 * DEG_TO_RAD, 55.5 * DEG_TO_RAD);
+        let (x_min, y_min) = lcc.forward(39.671000 * DEG_TO_RAD, (334.578000 - 360.) * DEG_TO_RAD);
+
+        let dx = 2000.;
+        let dy = 2000.;
+
+        let nx = 1906 as usize;
+
+        let mut imm_data: Vec<f32> = vec![0.0; width * height];
+
+        let mut idx = 0;
+        let mut y_cur = y_start;
+        for _y in 0..height {
+            let mut x_cur = x_start;
+            for _x in 0..width {
+                let (lon, lat) = laea.inverse(x_cur, y_cur);
+
+                //let mut point_3d = (x_cur, y_cur, 0.0);
+                //proj4rs::transform::transform(&from, &to, &mut point_3d).unwrap();
+
+                let (x, y) = lcc.forward(lat, lon);
+
+                let x_index = f32::round(((x - x_min) / dx as f64) as f32) as usize;
+                let y_index = f32::round(((y - y_min) / dy as f64) as f32) as usize;
+                let val = grib_data[y_index * nx + x_index];
+
+                imm_data[idx] = val;
+                idx += 1;
+
+                //println!("wgs: {}, {} - lcc: {}, {}", px, py, x, y);
+
+                x_cur += x_step;
+            }
+            y_cur -= y_step;
+        }
+
+        let max = 295.04468;
+        let min = 245.35814;
+
+        let dx = 255. / (max - min);
+        println!("Data dx: {:?}", dx);
+
+        let img: Vec<u8> = imm_data.iter().map(|v| f32::floor((v - min) * dx) as u8).collect();
+
+        save_gif(&img, width, height, "./out/cut_img_laea.gif");
 
         Ok(())
     }

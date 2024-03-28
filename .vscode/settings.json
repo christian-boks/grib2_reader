@@ -1,5 +1,13 @@
 {
     "rust-analyzer.linkedProjects": [
         ".\\Cargo.toml"
+    ],
+    "cSpell.words": [
+        "ellps",
+        "laea",
+        "longlat",
+        "merc",
+        "nadgrids",
+        "wktext"
     ]
 }
