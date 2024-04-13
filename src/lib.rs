@@ -11,13 +11,13 @@ use serde::Serialize;
 
 use std::io::Cursor;
 use std::io::SeekFrom;
-use tokio::fs::File;
+
 use tokio::io::{AsyncReadExt, AsyncSeekExt, BufReader};
 pub mod error;
 
 /// The star of the show
-pub struct Grib2Reader {
-    pub reader: BufReader<File>,
+pub struct Grib2Reader<R> {
+    pub reader: BufReader<R>,
     offset: u64,
 }
 
@@ -222,9 +222,14 @@ pub struct GribIndex {
     pub length: u64,
 }
 
-impl Grib2Reader {
+impl<R> Grib2Reader<R>
+where
+    R: AsyncReadExt,
+    R: AsyncSeekExt,
+    R: Unpin,
+{
     /// Create a new instance of the GRIB1 reader by specifying the BufReader wrapping the file to read.
-    pub fn new(buf_reader: BufReader<File>) -> Grib2Reader {
+    pub fn new(buf_reader: BufReader<R>) -> Grib2Reader<R> {
         Grib2Reader { reader: buf_reader, offset: 0 }
     }
 
@@ -642,7 +647,10 @@ mod tests {
     use proj4rs::proj::Proj;
     use std::borrow::Cow;
     use std::f64::consts::PI;
+    use tokio::fs::File;
+    use tokio::io::AsyncRead;
     use tokio::io::AsyncWriteExt;
+
     pub const DEG_TO_RAD: f64 = PI / 180.0;
     pub const RAD_TO_DEG: f64 = 180.0 / PI;
 
