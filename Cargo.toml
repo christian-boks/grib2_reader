@@ -31,3 +31,4 @@ proj4rs = "0.1.2"
 hdf5_processor = { git = "ssh://git@github.com/christian-boks/hdf5_processor.git", branch = "master", features = [
     "json",
 ] }
+bytes = "1.0.1"

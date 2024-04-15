@@ -11,7 +11,6 @@ use serde::Serialize;
 
 use std::io::Cursor;
 use std::io::SeekFrom;
-
 use tokio::io::{AsyncReadExt, AsyncSeekExt, BufReader};
 pub mod error;
 
@@ -241,7 +240,6 @@ where
         // We need to know how large the file is, so we know when to stop
         let length = self.reader.seek(SeekFrom::End(0)).await?;
 
-        let mut count = 0;
         while offset < length {
             self.reader.seek(SeekFrom::Start(offset)).await?;
 
@@ -254,11 +252,8 @@ where
                 }
                 GribResult::Length(length) => length,
             };
-            count += 1;
             offset += length;
         }
-
-        println!("File count: {count}");
 
         Ok(result)
     }
@@ -642,17 +637,15 @@ fn read_u64_be(array: &[u8]) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bytes::Bytes;
     use gif::{Encoder, Frame, Repeat};
     use proj4rs;
     use proj4rs::proj::Proj;
     use std::borrow::Cow;
     use std::f64::consts::PI;
     use tokio::fs::File;
-    use tokio::io::AsyncRead;
     use tokio::io::AsyncWriteExt;
-
     pub const DEG_TO_RAD: f64 = PI / 180.0;
-    pub const RAD_TO_DEG: f64 = 180.0 / PI;
 
     fn save_gif(result_data: &Vec<u8>, width: usize, height: usize, filename: &str) {
         let mut color_map = Vec::<u8>::with_capacity(256 * 3);
@@ -901,6 +894,20 @@ mod tests {
         let img: Vec<u8> = imm_data.iter().map(|v| f32::floor((v - min) * dx) as u8).collect();
 
         save_gif(&img, width, height, "./out/cut_img_laea.gif");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn read_from_buf_test() -> Result<(), Grib2Error> {
+        // cargo test --release read_all_binary_test -- --nocapture > out.log
+        //let f = File::open("data/HARMONIE_DINI_SF_2024-03-21T120000Z_2024-03-21T140000Z.grib").await?;
+
+        let buf: Vec<u8> = vec![0; 1024];
+
+        let mut b_reader = BufReader::new(Cursor::new(Bytes::from(buf)));
+        let file_length = b_reader.seek(SeekFrom::End(0)).await?;
+        let mut reader = Grib2Reader::new(b_reader);
 
         Ok(())
     }
