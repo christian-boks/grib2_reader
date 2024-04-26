@@ -1,9 +1,11 @@
 use thiserror::Error;
+#[cfg(feature = "async")]
 use tokio::io;
 
 #[derive(Error, Debug)]
 /// List of errors the library can return when reading a GRIB file
 pub enum Grib2Error {
+    #[cfg(feature = "async")]
     #[error("IO Error")]
     /// An IO error occurred while handling the supplied file
     IoError(#[from] io::Error),
