@@ -112,6 +112,24 @@ pub struct ProductDefinition {
     pub template: ProductDefinitionTemplate,
 }
 
+impl ProductDefinition {
+    pub fn get_parameter_category(&self) -> u8 {
+        match &self.template {
+            ProductDefinitionTemplate::Id1(pdt) => pdt.parameter_category,
+            ProductDefinitionTemplate::Id11(pdt) => pdt.parameter_category,
+            _ => 255,
+        }
+    }
+
+    pub fn get_parameter_number(&self) -> u8 {
+        match &self.template {
+            ProductDefinitionTemplate::Id1(pdt) => pdt.parameter_number,
+            ProductDefinitionTemplate::Id11(pdt) => pdt.parameter_number,
+            _ => 255,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum ProductDefinitionTemplate {
     Id1(Id1ProductDefinitionTemplate),
