@@ -26,7 +26,7 @@ pub struct Grib2Reader {
 
 #[derive(Debug, Default)]
 /// Grib file representation
-pub struct Grib {
+pub struct Grib2 {
     pub length: u64,
     pub discipline: u8,
     pub identification: Option<Identification>,
@@ -38,9 +38,9 @@ pub struct Grib {
 }
 
 #[derive(Debug)]
-pub enum GribResult {
+pub enum Grib2Result {
     Length(u64),
-    Grib(Grib),
+    Grib(Grib2),
 }
 
 #[derive(Debug, Clone)]
@@ -240,7 +240,7 @@ where
     }
 
     /// Read the file and return all the decoded results.
-    pub async fn read(&mut self) -> Result<Vec<Grib>, Grib2Error> {
+    pub async fn read(&mut self) -> Result<Vec<Grib2>, Grib2Error> {
         let mut offset = 0;
         let mut result = vec![];
 
@@ -252,12 +252,12 @@ where
 
             let grib_result = self.read_grib().await?;
             let length = match grib_result {
-                GribResult::Grib(grib) => {
+                Grib2Result::Grib(grib) => {
                     let length = grib.length;
                     result.push(grib);
                     length
                 }
-                GribResult::Length(length) => length,
+                Grib2Result::Length(length) => length,
             };
             offset += length;
         }
@@ -288,7 +288,7 @@ where
         Ok(data)
     }
 
-    async fn read_grib(&mut self) -> Result<GribResult, Grib2Error> {
+    async fn read_grib(&mut self) -> Result<Grib2Result, Grib2Error> {
         // The first 8 bytes describes the header of the grib file
         let mut buffer = [0; 16];
         let _ = self.reader.read_exact(&mut buffer).await?;
@@ -297,7 +297,7 @@ where
 
         let mut read_bytes = 16;
 
-        let mut result_grib = Grib {
+        let mut result_grib = Grib2 {
             length: length_of_grib_section,
             discipline: discipline,
             ..Default::default()
@@ -335,7 +335,7 @@ where
             }
         }
 
-        Ok(GribResult::Grib(result_grib))
+        Ok(Grib2Result::Grib(result_grib))
     }
 
     async fn get_length(&mut self) -> Result<usize, Grib2Error> {
@@ -364,7 +364,7 @@ impl Grib2Reader {
     }
 
     /// Parse the passed in buffer and return any found grib information
-    pub fn parse(&mut self, buffer: Vec<u8>) -> Result<GribResult, Grib2Error> {
+    pub fn parse(&mut self, buffer: Vec<u8>) -> Result<Grib2Result, Grib2Error> {
         self.buffer = buffer;
         self.index = 0;
 
@@ -375,7 +375,7 @@ impl Grib2Reader {
 
         let mut read_bytes = 16;
 
-        let mut result_grib = Grib {
+        let mut result_grib = Grib2 {
             length: length_of_grib_section,
             discipline: buffer[6],
             ..Default::default()
@@ -412,7 +412,7 @@ impl Grib2Reader {
             }
         }
 
-        Ok(GribResult::Grib(result_grib))
+        Ok(Grib2Result::Grib(result_grib))
     }
 
     fn get_length(&mut self) -> usize {
