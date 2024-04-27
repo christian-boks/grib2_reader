@@ -11,7 +11,7 @@ use std::io::SeekFrom;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, BufReader};
 pub mod error;
 
-/// The star of the show
+/// The star of the show when doing async
 #[cfg(feature = "async")]
 pub struct Grib2Reader<R> {
     pub reader: BufReader<R>,
@@ -19,13 +19,14 @@ pub struct Grib2Reader<R> {
 }
 
 #[cfg(not(feature = "async"))]
+/// The star of the show when only parsing
 pub struct Grib2Reader {
     buffer: Vec<u8>,
     index: usize,
 }
 
 #[derive(Debug, Default)]
-/// Grib file representation
+/// Grib2 file representation
 pub struct Grib2 {
     pub length: u64,
     pub discipline: u8,
@@ -35,12 +36,6 @@ pub struct Grib2 {
     pub data_representation: Vec<DataRepresentation>,
     pub bitmap: Vec<Bitmap>,
     pub data: Vec<Data>,
-}
-
-#[derive(Debug)]
-pub enum Grib2Result {
-    Length(u64),
-    Grib(Grib2),
 }
 
 #[derive(Debug, Clone)]
@@ -73,6 +68,7 @@ pub struct GridDefinition {
 }
 
 #[derive(Debug, Clone, Default)]
+/// Lambert Conformal Template
 pub struct LambertConformalTemplate {
     pub shape_of_the_earth: u8,
     pub scale_factor_of_radius_of_spherical_earth: u8,
@@ -99,6 +95,7 @@ pub struct LambertConformalTemplate {
 }
 
 #[derive(Debug, Clone)]
+/// Grid Definition Template
 pub enum GridDefinitionTemplate {
     LambertConformal(LambertConformalTemplate),
     Unknown,
@@ -113,6 +110,7 @@ pub struct ProductDefinition {
 }
 
 impl ProductDefinition {
+    /// Get the parameter category from a product definition
     pub fn get_parameter_category(&self) -> u8 {
         match &self.template {
             ProductDefinitionTemplate::Id1(pdt) => pdt.parameter_category,
@@ -121,6 +119,7 @@ impl ProductDefinition {
         }
     }
 
+    /// Get the parameter number from a product definition
     pub fn get_parameter_number(&self) -> u8 {
         match &self.template {
             ProductDefinitionTemplate::Id1(pdt) => pdt.parameter_number,
@@ -131,6 +130,7 @@ impl ProductDefinition {
 }
 
 #[derive(Debug, Clone)]
+/// Product Definition Template
 pub enum ProductDefinitionTemplate {
     Id1(Id1ProductDefinitionTemplate),
     Id11(Id11ProductDefinitionTemplate),
@@ -138,6 +138,7 @@ pub enum ProductDefinitionTemplate {
 }
 
 #[derive(Debug, Clone, Default)]
+/// Id1 Product Definition Template
 pub struct Id1ProductDefinitionTemplate {
     pub parameter_category: u8,
     pub parameter_number: u8,
@@ -160,6 +161,7 @@ pub struct Id1ProductDefinitionTemplate {
 }
 
 #[derive(Debug, Clone, Default)]
+/// Id11 Product Definition Template
 pub struct Id11ProductDefinitionTemplate {
     pub parameter_category: u8,
     pub parameter_number: u8,
@@ -209,8 +211,10 @@ pub enum DataRepresentationTemplate {
 pub struct SimplePackingTemplate {
     reference_value: f32,
     binary_scale_factor: i16,
+    #[allow(dead_code)]
     decimal_scale_factor: i16,
     number_of_bits_used_for_each_packed_value: u8,
+    #[allow(dead_code)]
     type_of_original_field_values: u8,
 }
 
@@ -265,7 +269,7 @@ where
         Ok(result)
     }
 
-    // Keep calling to get next file from the container
+    /// Keep calling to get next file from the container
     pub async fn read_binary_next(&mut self, file_length: u64) -> Result<Vec<u8>, Grib2Error> {
         if self.offset == file_length {
             return Ok(vec![]);
@@ -288,7 +292,7 @@ where
         Ok(data)
     }
 
-    async fn read_grib(&mut self) -> Result<Grib2Result, Grib2Error> {
+    async fn read_grib(&mut self) -> Result<Grib2, Grib2Error> {
         // The first 8 bytes describes the header of the grib file
         let mut buffer = [0; 16];
         let _ = self.reader.read_exact(&mut buffer).await?;
@@ -299,7 +303,7 @@ where
 
         let mut result_grib = Grib2 {
             length: length_of_grib_section,
-            discipline: discipline,
+            discipline: buffer[6],
             ..Default::default()
         };
 
@@ -335,7 +339,7 @@ where
             }
         }
 
-        Ok(Grib2Result::Grib(result_grib))
+        Ok(result_grib)
     }
 
     async fn get_length(&mut self) -> Result<usize, Grib2Error> {
@@ -364,7 +368,7 @@ impl Grib2Reader {
     }
 
     /// Parse the passed in buffer and return any found grib information
-    pub fn parse(&mut self, buffer: Vec<u8>) -> Result<Grib2Result, Grib2Error> {
+    pub fn parse(&mut self, buffer: Vec<u8>) -> Result<Grib2, Grib2Error> {
         self.buffer = buffer;
         self.index = 0;
 
@@ -412,7 +416,7 @@ impl Grib2Reader {
             }
         }
 
-        Ok(Grib2Result::Grib(result_grib))
+        Ok(result_grib)
     }
 
     fn get_length(&mut self) -> usize {
@@ -707,49 +711,31 @@ fn parse_data(buffer: &[u8], data_representation_list: &[DataRepresentation], bi
 mod tests {
     use super::*;
 
+    #[cfg(not(feature = "async"))]
+    use std::{fs::File, io::Read};
+
     #[cfg(feature = "async")]
     use tokio::fs::File;
-    #[cfg(feature = "async")]
-    use tokio::io::AsyncWriteExt;
 
-    #[tokio::test]
-    #[cfg(feature = "async")]
-    async fn read_test() -> Result<(), Grib2Error> {
-        // cargo test --release read_test -- --nocapture > out.log
-        let f = File::open("data/HARMONIE_DINI_SF_2024-03-21T120000Z_2024-03-21T140000Z.grib").await?;
+    #[test]
+    fn read_single_test() {
+        let mut f = File::open("data/HARMONIE_DINI_SF_5.grib").expect("Unable to open file");
 
-        let mut reader = Grib2Reader::new(BufReader::new(f));
-        let result = reader.read().await?;
+        let mut data = vec![];
+        f.read_to_end(&mut data).expect("Unable to read file");
+
+        let mut reader = Grib2Reader::new();
+        let mut grib = reader.parse(data).expect("Unable to parse grib2 file");
 
         println!("Results:");
-        for mut grib in result {
-            grib.data[0].data = vec![];
-            grib.bitmap[0].bmp = vec![];
-            println!("{:#?}", &grib);
-        }
-
-        Ok(())
-    }
-
-    #[cfg(feature = "async")]
-    async fn get_data() -> Result<Vec<f32>, Grib2Error> {
-        let f = File::open("data/HARMONIE_DINI_SF_5.grib").await?;
-
-        let mut reader = Grib2Reader::new(BufReader::new(f));
-        let result = reader.read().await?;
-
-        let mut data: Vec<f32> = vec![];
-
-        for grib in result {
-            data = grib.data[0].data.clone();
-        }
-
-        Ok(data)
+        // We don't want to display the binary data, so remove that from the output
+        grib.data[0].data = vec![];
+        println!("{:#?}", &grib);
     }
 
     #[tokio::test]
     #[cfg(feature = "async")]
-    async fn read_single_test() -> Result<(), Grib2Error> {
+    async fn read_single_test_async() -> Result<(), Grib2Error> {
         let f = File::open("data/HARMONIE_DINI_SF_5.grib").await?;
 
         let mut reader = Grib2Reader::new(BufReader::new(f));
@@ -757,7 +743,6 @@ mod tests {
 
         println!("Results:");
         for mut grib in result {
-            let data = grib.data[0].data.clone();
             grib.data[0].data = vec![];
             println!("{:#?}", &grib);
         }

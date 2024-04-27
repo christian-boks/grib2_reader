@@ -1,32 +1,65 @@
 # GRIB2 Reader
+This is designed to do two things:
 
-Read a GRIB2 file and search for data based on parameter and level values. The results can either be decoded or extracted as a binary blob so it can be saved to a separate file.
-
+ 1. Cut up a combined grib2 file into smaller individual grib2 parts using tokio and async.
+ 2. Parse a single grib2 file from a `Vec<u8>` blob (without tokio and async).
 
 # Usage
-Add this to your Cargo.toml:
+Add this to your Cargo.toml if you want to use the async feature:
 
 ```toml
 [dependencies]
-grib1_reader = "0.1.0"
+grib2_reader = { version = "0.1.0", features = ["async"] }
 ```
+
+Add this to your Cargo.toml if you only want to parse a single grib2 file:
+
+```toml
+[dependencies]
+grib2_reader = "0.1.0"
+```
+
 and this to your source code:
 
 ```rust
-use grib2_reader::{Grib2Reader, SearchParams};
+use grib2_reader::{Grib2Reader, Grib2Error};
 ```
 # Example
-
+Count the number of individual grib2 files inside a combined grib2 file.
 ```rust
-let file = File::open("data/sample.grib").await?;
-let mut reader = Grib2Reader::new(BufReader::new(file));
-let result = reader.read(vec![SearchParams { param: 33, level: 700 }]).await?;
+async fn read_all() -> Result<(), Grib2Error> {
+        let f = File::open("data/HARMONIE_DINI_SF_5.grib").await?;
 
-println!("Results:");
-for grib in result {
-    println!("{:#?}", &grib.pds);
-    if let Some(gds) = grib.gds {
-        println!("{:#?}", &gds);
+        let mut b_reader = BufReader::new(f);
+        let file_length = b_reader.seek(SeekFrom::End(0)).await?;
+        let mut reader = Grib2Reader::new(b_reader);
+
+        let mut count = 0;
+        loop {
+            match reader.read_binary_next(file_length).await {
+                Ok(data) => {
+                    if data.is_empty() {
+                        println!("All done");
+                        break;
+                    }
+
+                    // Here data is a Vec<u8> of the contained grib2 data
+
+                    count += 1;
+                }
+                Err(Grib2Error::EOF) => {
+                    println!("EOF");
+                    break;
+                }
+                Err(err) => {
+                    println!("Err: {:?}", err);
+                    break;
+                }
+            };
+        }
+
+        println!("File count: {}", count);
+
+        Ok(())
     }
-}
 ```
