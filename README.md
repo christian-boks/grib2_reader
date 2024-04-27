@@ -9,14 +9,14 @@ Add this to your Cargo.toml if you want to use the async feature:
 
 ```toml
 [dependencies]
-grib2_reader = { version = "0.1.0", features = ["async"] }
+grib2_reader = { version = "0.1.1", features = ["async"] }
 ```
 
 Add this to your Cargo.toml if you only want to parse a single grib2 file:
 
 ```toml
 [dependencies]
-grib2_reader = "0.1.0"
+grib2_reader = "0.1.1"
 ```
 
 # Example

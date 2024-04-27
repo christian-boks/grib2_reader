@@ -257,15 +257,8 @@ where
             self.reader.seek(SeekFrom::Start(offset)).await?;
 
             let grib_result = self.read_grib().await?;
-            let length = match grib_result {
-                Grib2Result::Grib(grib) => {
-                    let length = grib.length;
-                    result.push(grib);
-                    length
-                }
-                Grib2Result::Length(length) => length,
-            };
-            offset += length;
+            offset += grib_result.length;
+            result.push(grib_result);
         }
 
         Ok(result)
@@ -718,6 +711,7 @@ mod tests {
     use tokio::fs::File;
 
     #[test]
+    #[cfg(not(feature = "async"))]
     fn read_single_test() {
         let mut f = File::open("data/HARMONIE_DINI_SF_5.grib").expect("Unable to open file");
 

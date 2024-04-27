@@ -1,6 +1,6 @@
 [package]
 name = "grib2_reader"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "A simple library capable of reading and parsing GRIB version 2 files"
 license = "MIT OR Apache-2.0"
