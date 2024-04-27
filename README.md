@@ -19,14 +19,11 @@ Add this to your Cargo.toml if you only want to parse a single grib2 file:
 grib2_reader = "0.1.0"
 ```
 
-and this to your source code:
-
-```rust
-use grib2_reader::{Grib2Reader, Grib2Error};
-```
 # Example
 Count the number of individual grib2 files inside a combined grib2 file.
 ```rust
+use grib2_reader::{Grib2Reader, Grib2Error};
+
 async fn read_all() -> Result<(), Grib2Error> {
         let f = File::open("data/HARMONIE_DINI_SF_5.grib").await?;
 
@@ -62,4 +59,23 @@ async fn read_all() -> Result<(), Grib2Error> {
 
         Ok(())
     }
+```
+When you just want to parse a single grib2 file:
+```rust
+use grib2_reader::{Grib2Parser, Grib2Error};
+
+fn parse_single() {
+    let mut f = File::open("data/HARMONIE_DINI_SF_5.grib").expect("Unable to open file");
+
+    let mut data = vec![];
+    f.read_to_end(&mut data).expect("Unable to read file");
+
+    let mut grib2_parser = Grib2Parser::new();
+    let mut grib = grib2_parser.parse(data).expect("Unable to parse grib2 file");
+
+    println!("Results:");
+    // We don't want to display the binary data, so remove that from the output
+    grib.data[0].data = vec![];
+    println!("{:#?}", &grib);
+}
 ```

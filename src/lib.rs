@@ -1,5 +1,8 @@
-//! Read a GRIB2 file and search for data based on parameter and level values. The results can either be decoded or extracted as a binary blob so it can be saved to a separate file.
-//! Currently only some of the functionality is implemented.
+#![feature(doc_auto_cfg)]
+//! This is designed to do two things:
+//! 1. Cut up a combined grib2 file into smaller individual grib2 parts using tokio and async.
+//! 2. Parse a single grib2 file from a `Vec<u8>` blob (without tokio and async).
+//!
 
 use bitstream_io::{BigEndian, BitRead, BitReader};
 use error::Grib2Error;
@@ -18,9 +21,8 @@ pub struct Grib2Reader<R> {
     offset: u64,
 }
 
-#[cfg(not(feature = "async"))]
 /// The star of the show when only parsing
-pub struct Grib2Reader {
+pub struct Grib2Parser {
     buffer: Vec<u8>,
     index: usize,
 }
@@ -353,18 +355,16 @@ where
     }
 }
 
-#[cfg(not(feature = "async"))]
-impl Default for Grib2Reader {
+impl Default for Grib2Parser {
     fn default() -> Self {
         Self::new()
     }
 }
 
-#[cfg(not(feature = "async"))]
-impl Grib2Reader {
+impl Grib2Parser {
     /// Create a new instance of the GRIB2 reader.
-    pub fn new() -> Grib2Reader {
-        Grib2Reader { buffer: vec![], index: 0 }
+    pub fn new() -> Grib2Parser {
+        Grib2Parser { buffer: vec![], index: 0 }
     }
 
     /// Parse the passed in buffer and return any found grib information
@@ -724,8 +724,8 @@ mod tests {
         let mut data = vec![];
         f.read_to_end(&mut data).expect("Unable to read file");
 
-        let mut reader = Grib2Reader::new();
-        let mut grib = reader.parse(data).expect("Unable to parse grib2 file");
+        let mut grib2_parser = Grib2Parser::new();
+        let mut grib = grib2_parser.parse(data).expect("Unable to parse grib2 file");
 
         println!("Results:");
         // We don't want to display the binary data, so remove that from the output
