@@ -1,4 +1,3 @@
-#![feature(doc_auto_cfg)]
 //! This is designed to do two things:
 //! 1. Cut up a combined grib2 file into smaller individual grib2 parts using tokio and async.
 //! 2. Parse a single grib2 file from a `Vec<u8>` blob (without tokio and async).
